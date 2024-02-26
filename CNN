@@ -1,0 +1,196 @@
+# Carga de bibliotecas necesarias
+import numpy as np
+import os
+import tensorflow as tf
+import requests
+from tensorflow import keras
+from PIL import Image
+from tensorflow.keras.models import load_model
+from io import BytesIO
+import cv2
+
+# Imprimir la lista de carpetas en el directorio
+path_list = os.listdir(os.path.join("data_base/images/", "Train3"))
+print("Lista de carpetas en el directorio:", path_list)
+
+# Verifica que el directorio base y las carpetas de nivel superior existan
+base_path = "C:\\Users\\acril\\OneDrive\\Documentos\\Tri 23-O\\PT1\\DataSet\\data_base\\images"
+train_path = os.path.join(base_path, "Train3")
+test_path = os.path.join(base_path, "Test3")
+
+print("Directorio base existe:", os.path.exists(base_path))
+print("Carpeta 'train' existe:", os.path.exists(train_path))
+print("Carpeta 'test' existe:", os.path.exists(test_path))
+
+
+# Función para cargar categoría
+def cargarCategoria(categoria, label, directorio="train"):
+    data = []
+    labels = []
+    path = os.path.join("C:\\Users\\acril\\OneDrive\\Documentos\\Tri 23-O\\PT1\\DataSet\\data_base\\images", directorio, categoria)
+    if os.path.exists(path):
+        items = os.listdir(path)
+        for item in items:
+            imag = cv2.imread(os.path.join(path, item))
+            img_from_ar = Image.fromarray(imag, 'RGB')
+            resized_image = img_from_ar.resize((150, 150))  # Ajusta al tamaño de entrada de la red
+            data.append(np.array(resized_image))
+            labels.append(label)
+    else:
+        print(f"La carpeta {path} no existe.")
+
+    return (data, labels)
+
+# Función para agregar categoría
+def AgregarCategoria(categoria, label, directorio="train"):
+    (dataC, labelsC) = cargarCategoria(categoria, label, directorio)
+    print("Cantidad de datos " + categoria + ": " + str(len(dataC)))
+    return (dataC, labelsC)
+
+
+
+# Inicialización de listas de datos y etiquetas
+data = []
+labels = []
+
+# Agregar categorías
+(dataC, labelsC) = AgregarCategoria("crotalus_triseratus", 0, "Train3")
+data += dataC
+labels += labelsC
+
+(dataC, labelsC) = AgregarCategoria("thamnophis_scalaris", 1, "Train3")
+data += dataC
+
+
+
+# Convertir a arrays
+animals = np.array(data)
+labels = np.array(labels)
+
+# Número de clases y longitud del conjunto de datos
+num_classes = len(np.unique(labels))
+data_length = len(animals)
+
+print("Cantidad de datos: " + str(data_length))
+print("Categorías: " + str(num_classes))
+
+# Importar modelo secuencial y capas necesarias
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Dropout
+
+
+# Crear modelo
+model = Sequential()
+
+# Capas convolucionales y de pooling más profundas
+model.add(Conv2D(filters=64, kernel_size=3, padding="same", activation="relu", input_shape=(150, 150, 3)))
+model.add(MaxPooling2D(pool_size=2))
+model.add(Conv2D(filters=128, kernel_size=3, padding="same", activation="relu"))
+model.add(MaxPooling2D(pool_size=2))
+model.add(Conv2D(filters=256, kernel_size=3, padding="same", activation="relu"))
+model.add(MaxPooling2D(pool_size=2))
+model.add(Conv2D(filters=512, kernel_size=3, padding="same", activation="relu"))
+model.add(MaxPooling2D(pool_size=2))
+model.add(Conv2D(filters=512, kernel_size=3, padding="same", activation="relu"))
+model.add(MaxPooling2D(pool_size=2))
+
+# Capa de aplanado
+model.add(Flatten())
+
+# Capas completamente conectadas
+model.add(Dense(512, activation="relu"))
+model.add(Dropout(0.2))
+model.add(Dense(256, activation="relu"))
+
+# Capa de salida
+model.add(Dense(num_classes, activation="softmax"))
+
+# Resumen del modelo
+model.summary()
+
+# Normalización y codificación one-hot
+animals = animals.astype('float32') / 255
+labels = keras.utils.to_categorical(labels, num_classes)
+
+
+# Compilación del modelo
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+# Entrenamiento del modelo
+model.fit(animals, labels, batch_size=50, epochs=60, verbose=1)
+
+# Función para cargar datos de prueba
+def cargarDatosPrueba():
+    dataTest = []
+    labelsTest = []
+
+    # Murcielago
+    (dataC, labelsC) = AgregarCategoria("Crotalus_triseratus", 0, "Test3")
+    dataTest += dataC
+    labelsTest += labelsC
+
+    # Thamnophis_scalaris
+    (dataC, labelsC) = AgregarCategoria("Thamnophis_scalaris", 1, "Test3")
+    dataTest += dataC
+    labelsTest += labelsC
+
+    print("Cantidad de datos de prueba: " + str(len(dataTest)))
+
+    # Convertir a arrays
+    animalsTest = np.array(dataTest)
+    labelsTest = np.array(labelsTest)
+
+    # Normalización y codificación one-hot
+    animalsTest = animalsTest.astype('float32') / 255
+    labelsTest = keras.utils.to_categorical(labelsTest, num_classes)
+
+    return animalsTest, labelsTest
+
+# Cargar datos de prueba
+animalsTest, labelsTest = cargarDatosPrueba()
+
+# Evaluación del modelo en datos de prueba
+score = model.evaluate(animalsTest, labelsTest, verbose=1)
+print('\n', 'Test accuracy:', score[1])
+
+
+# Hacer predicciones en un conjunto de imágenes
+predictions = model.predict(animalsTest)
+
+# Convertir las predicciones a clases (0 o 1)
+predicted_classes = np.argmax(predictions, axis=1)
+
+# Imprimir las etiquetas predichas
+print("Etiquetas predichas:", predicted_classes)
+
+
+model.save("clasificador_animales.h5")
+
+#Predicción con modelo cargado
+# Carga del modelo
+loaded_model = load_model("clasificador_animales.h5")
+
+# URL 
+image_url = "https://reptile-database.reptarium.cz/content/photo_rd_07/Thamnophis-scaliger-03000037635_01.jpg"
+
+
+response = requests.get(image_url)
+img = Image.open(BytesIO(response.content))
+
+# Redimensionamiento del modelo
+img = img.resize((150, 150))
+
+
+img_array = np.array(img)
+img_array = np.expand_dims(img_array, axis=0) 
+img_array = img_array / 255.0  # Normaliza los valores de píxeles al rango [0, 1]
+
+# Predicción
+predictions = loaded_model.predict(img_array)
+
+# Obtener la clase predicha
+predicted_class_index = np.argmax(predictions, axis=1)
+class_names = ["Crotalus Triseratus", "Thamnopis Scalaris"]
+predicted_class_label = class_names[predicted_class_index[0]]
+
+print(f"La imagen ha sido clasificada como: {predicted_class_label}")
